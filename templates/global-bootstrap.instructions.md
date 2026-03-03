@@ -5,7 +5,7 @@ description: 'GLOBAL BOOTSTRAP: Auto-load REUSABLE_AI_KIT v3 for all projects'
 
 # REUSABLE_AI_KIT Global Bootstrap (v3)
 
-> This instruction is installed in `%APPDATA%\Code\User\Instructions\` by `scripts/install-global.ps1`.
+> This instruction is installed in `%APPDATA%\Code\User\instructions\` by `scripts/install-global.ps1`.
 
 ## Default Agent
 

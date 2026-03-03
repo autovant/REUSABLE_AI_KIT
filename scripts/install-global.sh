@@ -49,7 +49,7 @@ detect_vscode_user_dir() {
 }
 
 VSCODE_USER_DIR="$(detect_vscode_user_dir)"
-INSTRUCTIONS_DIR="$VSCODE_USER_DIR/Instructions"
+INSTRUCTIONS_DIR="$VSCODE_USER_DIR/instructions"
 PROMPTS_DIR="$VSCODE_USER_DIR/prompts"
 GLOBAL_KIT_DIR="$VSCODE_USER_DIR/REUSABLE_AI_KIT"
 
@@ -213,7 +213,7 @@ EOF
         for instr in "$INSTALLED_RUNTIME/instructions/"*.instructions.md; do
             [[ -f "$instr" ]] || continue
             local base; base="$(basename "$instr")"
-            local rel="Instructions/$base"
+            local rel="instructions/$base"
             local dest="$INSTRUCTIONS_DIR/$base"
             if [[ -f "$dest" ]] && ! manifest_contains "$rel"; then
                 warn "Skipped (user file exists): $base"
@@ -343,7 +343,7 @@ EOF
     echo -e "${GRAY}  Bootstrap: $BOOTSTRAP_FILE${RESET}"
 
     # Track bootstrap in manifest and write it
-    MANIFEST_ENTRIES+=("Instructions/000-reusable-ai-kit-global.instructions.md")
+    MANIFEST_ENTRIES+=("instructions/000-reusable-ai-kit-global.instructions.md")
     write_manifest
     step "Manifest written (${#MANIFEST_ENTRIES[@]} Kit-owned files tracked)"
 }

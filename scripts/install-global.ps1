@@ -187,7 +187,7 @@ function Install-GlobalKit {
         $BootstrapContent = Get-Content $TemplateFile -Raw
         # Replace placeholder paths with actual paths
         $BootstrapContent = $BootstrapContent -replace '%APPDATA%\\Code\\User\\REUSABLE_AI_KIT', $RuntimeRoot
-        $BootstrapContent = $BootstrapContent -replace '%APPDATA%\\Code\\User\\Instructions', $InstructionsDir
+        $BootstrapContent = $BootstrapContent -replace '%APPDATA%\\Code\\User\\[Ii]nstructions', $InstructionsDir
         # Add installation timestamp
         $Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
         $BootstrapContent = $BootstrapContent -replace '> It is installed by running:', "> Installed: $Timestamp`n> It is installed by running:"
@@ -258,7 +258,7 @@ For project-specific memory that persists:
     $InstructionFiles = Get-ChildItem -Path "$RuntimeRoot\instructions" -Filter "*.instructions.md" -File -ErrorAction SilentlyContinue
     foreach ($Instr in $InstructionFiles) {
         $InstrDest = Join-Path $InstructionsDir $Instr.Name
-        $RelPath = "Instructions\$($Instr.Name)"
+        $RelPath = "instructions\$($Instr.Name)"
         if ((Test-Path $InstrDest) -and ($PreviousManifest -notcontains $RelPath)) {
             Write-Warning "Skipped (user file exists): $($Instr.Name)"
             continue
@@ -417,7 +417,7 @@ Status: [FULLY OPERATIONAL / NEEDS ATTENTION / NOT INSTALLED]
     Write-Info "Created: $VerifyPromptPath"
 
     # Also track the bootstrap instruction in the manifest
-    $ManifestEntries.Add("Instructions\000-reusable-ai-kit-global.instructions.md")
+    $ManifestEntries.Add("instructions\000-reusable-ai-kit-global.instructions.md")
 
     # Write the manifest so future installs/uninstalls know what belongs to the Kit
     Write-Manifest -Entries $ManifestEntries.ToArray()
@@ -521,7 +521,7 @@ try {
         }
         # Set per-edition paths
         $VSCodeUserDir   = $Ed.Path
-        $InstructionsDir = "$VSCodeUserDir\Instructions"
+        $InstructionsDir = "$VSCodeUserDir\instructions"
         $PromptsDir      = "$VSCodeUserDir\prompts"
         $GlobalKitDir    = "$VSCodeUserDir\REUSABLE_AI_KIT"
 
