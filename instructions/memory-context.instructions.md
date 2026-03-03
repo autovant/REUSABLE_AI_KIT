@@ -5,7 +5,7 @@ description: 'Use persistent DuckDB memory strategically for cross-session recal
 
 # Memory & Context Strategy
 
-The kit ships a DuckDB-backed memory store (`v3/tools/global_memory.py`) with columnar storage and BM25 full-text search. Use it as a first-class tool — not a last resort.
+The kit ships a DuckDB-backed memory store (`tools/global_memory.py`) with columnar storage and BM25 full-text search. Use it as a first-class tool — not a last resort.
 
 ## Retrieval-First Rule (Non-Negotiable)
 
@@ -124,5 +124,5 @@ python tools/global_memory.py recent --scope session --limit 50 --format markdow
 ```bash
 # Installer handles this automatically; manual steps if needed:
 pip install duckdb
-python v3/tools/global_memory.py init
+python tools/global_memory.py init
 ```

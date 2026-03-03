@@ -103,8 +103,8 @@ function Install-GlobalKit {
     Copy-Item @CopyParams
     Write-Info "Installed to: $GlobalKitDir"
 
-    # Prefer v3 as runtime root when present, while still keeping full repo for scripts/utilities
-    $RuntimeRoot = if (Test-Path "$GlobalKitDir\v3\README.md") { "$GlobalKitDir\v3" } else { $GlobalKitDir }
+    # Runtime root is the kit root itself (no subfolder needed)
+    $RuntimeRoot = $GlobalKitDir
     Write-Info "Runtime root: $RuntimeRoot"
     Write-Info "VS Code User: $VSCodeUserDir"
     
@@ -113,7 +113,6 @@ function Install-GlobalKit {
     
     # Read the template and customize it
     $TemplateCandidates = @(
-        "$KitRoot\v3\templates\global-bootstrap.instructions.md",
         "$KitRoot\templates\global-bootstrap.instructions.md"
     )
     $TemplateFile = $TemplateCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1

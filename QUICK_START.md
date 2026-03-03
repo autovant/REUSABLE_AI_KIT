@@ -32,9 +32,9 @@ Open any project in VS Code Copilot Chat and type:
 
 ## 3. Explore
 
-- Full reference: [`v3/README.md`](v3/README.md)
-- Agent catalog: [`v3/AGENT-REGISTRY.md`](v3/AGENT-REGISTRY.md)
-- Memory tool: [`v3/tools/README.md`](v3/tools/README.md)
+- Full reference: [`README.md`](README.md)
+- Agent catalog: [`AGENT-REGISTRY.md`](AGENT-REGISTRY.md)
+- Memory tool: [`tools/README.md`](tools/README.md)
 
 ## Uninstall
 

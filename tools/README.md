@@ -1,4 +1,4 @@
-# v3 Toolkit — Python Analysis Tools
+# Python Analysis Tools
 
 Lightweight, zero-dependency Python scripts that work in any environment.
 Every tool auto-detects the project ecosystem and outputs structured JSON or Markdown.
@@ -17,15 +17,15 @@ Every tool auto-detects the project ecosystem and outputs structured JSON or Mar
 
 ```bash
 # From any project root:
-python <kit_path>/v3/tools/vuln_scan.py --path . --format markdown
-python <kit_path>/v3/tools/license_check.py --path . --format json
-python <kit_path>/v3/tools/env_health.py --path . --format markdown
-python <kit_path>/v3/tools/code_metrics.py --path . --format markdown --top 15
+python <kit_path>/tools/vuln_scan.py --path . --format markdown
+python <kit_path>/tools/license_check.py --path . --format json
+python <kit_path>/tools/env_health.py --path . --format markdown
+python <kit_path>/tools/code_metrics.py --path . --format markdown --top 15
 
 # Persistent memory — requires: pip install duckdb
-python <kit_path>/v3/tools/global_memory.py init
-python <kit_path>/v3/tools/global_memory.py upsert --scope global --namespace conventions --key python-style --title "Python Style" --content "Use type hints for all public APIs"
-python <kit_path>/v3/tools/global_memory.py search --query "python style" --limit 5 --format markdown
+python <kit_path>/tools/global_memory.py init
+python <kit_path>/tools/global_memory.py upsert --scope global --namespace conventions --key python-style --title "Python Style" --content "Use type hints for all public APIs"
+python <kit_path>/tools/global_memory.py search --query "python style" --limit 5 --format markdown
 ```
 
 ## Requirements

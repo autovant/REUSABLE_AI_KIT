@@ -77,13 +77,8 @@ install_kit() {
         exit 1
     fi
 
-    # Pick v3 as runtime root when present
-    if [[ -f "$KIT_ROOT/v3/README.md" ]]; then
-        RUNTIME_ROOT="$KIT_ROOT/v3"
-    else
-        RUNTIME_ROOT="$KIT_ROOT"
-    fi
-
+    # Runtime root is the kit root itself (no subfolder needed)
+    RUNTIME_ROOT="$KIT_ROOT"
     step "Using runtime root: $RUNTIME_ROOT"
 
     # Create directories
@@ -106,18 +101,13 @@ install_kit() {
     info "Installed: $GLOBAL_KIT_DIR"
 
     # Resolve runtime root inside the installed copy
-    if [[ -f "$GLOBAL_KIT_DIR/v3/README.md" ]]; then
-        INSTALLED_RUNTIME="$GLOBAL_KIT_DIR/v3"
-    else
-        INSTALLED_RUNTIME="$GLOBAL_KIT_DIR"
-    fi
+    INSTALLED_RUNTIME="$GLOBAL_KIT_DIR"
 
     # ── Bootstrap instruction ─────────────────────────────────────────────────
     step "Creating global bootstrap instruction..."
 
     TEMPLATE_FILE=""
-    for t in "$KIT_ROOT/v3/templates/global-bootstrap.instructions.md" \
-              "$KIT_ROOT/templates/global-bootstrap.instructions.md"; do
+    for t in "$KIT_ROOT/templates/global-bootstrap.instructions.md"; do
         if [[ -f "$t" ]]; then
             TEMPLATE_FILE="$t"
             break
@@ -236,7 +226,7 @@ EOF
         fi
     else
         warn "Python not found — install Python 3 and run: pip install duckdb"
-        warn "Then init memory: python v3/tools/global_memory.py init"
+        warn "Then init memory: python tools/global_memory.py init"
     fi
 
     # ── Summary ───────────────────────────────────────────────────────────────
@@ -280,10 +270,10 @@ uninstall_kit() {
     )
 
     # Also remove any agent files installed from the kit
-    if [[ -d "$GLOBAL_KIT_DIR/v3/agents" ]]; then
+    if [[ -d "$GLOBAL_KIT_DIR/agents" ]]; then
         while IFS= read -r -d '' agent; do
             to_remove+=("$PROMPTS_DIR/$(basename "$agent")")
-        done < <(find "$GLOBAL_KIT_DIR/v3/agents" -name "*.agent.md" -print0 2>/dev/null)
+        done < <(find "$GLOBAL_KIT_DIR/agents" -name "*.agent.md" -print0 2>/dev/null)
     fi
 
     for path in "${to_remove[@]}"; do

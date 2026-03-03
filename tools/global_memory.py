@@ -43,7 +43,7 @@ def utc_now() -> str:
 
 def default_db_path() -> Path:
     # Keep memory near the toolkit installation by default.
-    # .../v3/tools/global_memory.py -> .../v3/memory/shared/global-memory.duckdb
+    # .../tools/global_memory.py -> .../memory/shared/global-memory.duckdb
     return Path(__file__).resolve().parent.parent / "memory" / "shared" / "global-memory.duckdb"
 
 
@@ -384,7 +384,7 @@ def main() -> int:
     parser.add_argument(
         "--db",
         default=str(default_db_path()),
-        help="Path to DuckDB database file (default: v3/memory/shared/global-memory.duckdb)",
+        help="Path to DuckDB database file (default: memory/shared/global-memory.duckdb)",
     )
     parser.add_argument("--format", choices=["json", "markdown"], default="json")
 

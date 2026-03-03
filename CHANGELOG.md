@@ -2,6 +2,13 @@
 
 All notable changes to this repository are documented here.
 
+## [3.3.0] - 2026-03-03
+
+### Changed
+- **Flattened repo structure** — removed `v3/` subfolder; `agents/`, `instructions/`, `prompts/`, `skills/`, `templates/`, `tools/`, and `memory/` now live at the repository root for a cleaner layout.
+- **Merged README** — combined installation guide with full component reference into a single root `README.md`.
+- Updated all internal references, installer scripts, and documentation to reflect the flat structure.
+
 ## [3.2.1] - 2026-03-03
 
 ### Fixed
@@ -47,7 +54,7 @@ All notable changes to this repository are documented here.
 
 ### Removed
 - Obsolete planning artifact: `KIT_IMPROVEMENT_PLAN.md`.
-- Legacy-heavy root docs replaced by compatibility shims that point to `v3/` sources.
+- Legacy-heavy root docs replaced by compatibility shims.
 - SQLite as memory backend (replaced by DuckDB).
 
 ## [3.0.0] - 2026-03-03
@@ -58,7 +65,7 @@ All notable changes to this repository are documented here.
 
 ### Removed
 - Obsolete planning artifact: `KIT_IMPROVEMENT_PLAN.md`.
-- Legacy-heavy root docs replaced by compatibility shims that point to `v3/` sources.
+- Legacy-heavy root docs replaced by compatibility shims.
 
 ---
 
