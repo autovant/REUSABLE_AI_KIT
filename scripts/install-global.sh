@@ -67,6 +67,30 @@ step()    { echo -e "${GREEN}[+] $1${RESET}"; }
 info()    { echo -e "${GRAY}    $1${RESET}"; }
 warn()    { echo -e "${YELLOW}[!] $1${RESET}"; }
 
+# ── Manifest helpers ──────────────────────────────────────────────────────────
+MANIFEST_PATH="$GLOBAL_KIT_DIR/.kit-manifest"
+MANIFEST_ENTRIES=()
+
+read_manifest() {
+    if [[ -f "$MANIFEST_PATH" ]]; then
+        mapfile -t PREV_MANIFEST < "$MANIFEST_PATH"
+    else
+        PREV_MANIFEST=()
+    fi
+}
+
+manifest_contains() {
+    local needle="$1"
+    for entry in "${PREV_MANIFEST[@]}"; do
+        [[ "$entry" == "$needle" ]] && return 0
+    done
+    return 1
+}
+
+write_manifest() {
+    printf '%s\n' "${MANIFEST_ENTRIES[@]}" | sort -u > "$MANIFEST_PATH"
+}
+
 # ── Install ───────────────────────────────────────────────────────────────────
 install_kit() {
     header "Installing REUSABLE_AI_KIT Globally"
@@ -87,6 +111,21 @@ install_kit() {
     info "Instructions: $INSTRUCTIONS_DIR"
     info "Prompts:      $PROMPTS_DIR"
     info "Kit:          $GLOBAL_KIT_DIR"
+
+    # Read manifest from any prior install (for collision checks and cleanup)
+    read_manifest
+
+    # Clean up files from a previous Kit install (manifest-tracked only)
+    if [[ ${#PREV_MANIFEST[@]} -gt 0 ]]; then
+        step "Cleaning previous Kit files (manifest-tracked)..."
+        for old_rel in "${PREV_MANIFEST[@]}"; do
+            [[ -z "$old_rel" ]] && continue
+            local old_path="$VSCODE_USER_DIR/$old_rel"
+            if [[ -f "$old_path" ]]; then
+                rm -f "$old_path"
+            fi
+        done
+    fi
 
     # Copy kit
     step "Copying AI Kit to global location..."
@@ -168,27 +207,42 @@ EOF
 
     # ── Instruction files ─────────────────────────────────────────────────────
     # VS Code only auto-loads .instructions.md from the User Instructions dir.
-    # applyTo scoping requires the files to be there, not buried inside the kit.
+    # SAFETY: Skip any file that already exists and was NOT installed by a previous Kit run.
     step "Installing instruction files..."
     if [[ -d "$INSTALLED_RUNTIME/instructions" ]]; then
         for instr in "$INSTALLED_RUNTIME/instructions/"*.instructions.md; do
             [[ -f "$instr" ]] || continue
-            cp "$instr" "$INSTRUCTIONS_DIR/$(basename "$instr")"
-            info "Installed: $(basename "$instr")"
+            local base; base="$(basename "$instr")"
+            local rel="Instructions/$base"
+            local dest="$INSTRUCTIONS_DIR/$base"
+            if [[ -f "$dest" ]] && ! manifest_contains "$rel"; then
+                warn "Skipped (user file exists): $base"
+                continue
+            fi
+            cp "$instr" "$dest"
+            MANIFEST_ENTRIES+=("$rel")
+            info "Installed: $base"
         done
     fi
 
     # ── Prompts ───────────────────────────────────────────────────────────────
+    # SAFETY: Skip any file that already exists and was NOT installed by a previous Kit run.
     step "Installing global prompts..."
 
     # Copy ALL prompt files
     if [[ -d "$INSTALLED_RUNTIME/prompts" ]]; then
         for prompt in "$INSTALLED_RUNTIME/prompts/"*.prompt.md; do
             [[ -f "$prompt" ]] || continue
-            # Replace placeholder paths with actual install location
-            sed "s|\[DETECTED_PATH\]|$GLOBAL_KIT_DIR|g" "$prompt" \
-                > "$PROMPTS_DIR/$(basename "$prompt")"
-            info "Installed: $(basename "$prompt")"
+            local base; base="$(basename "$prompt")"
+            local rel="prompts/$base"
+            local dest="$PROMPTS_DIR/$base"
+            if [[ -f "$dest" ]] && ! manifest_contains "$rel"; then
+                warn "Skipped (user file exists): $base"
+                continue
+            fi
+            sed "s|\[DETECTED_PATH\]|$GLOBAL_KIT_DIR|g" "$prompt" > "$dest"
+            MANIFEST_ENTRIES+=("$rel")
+            info "Installed: $base"
         done
     fi
 
@@ -197,18 +251,35 @@ EOF
         mkdir -p "$PROMPTS_DIR/pipelines"
         for pipeline in "$INSTALLED_RUNTIME/prompts/pipelines/"*.prompt.md; do
             [[ -f "$pipeline" ]] || continue
-            cp "$pipeline" "$PROMPTS_DIR/pipelines/$(basename "$pipeline")"
-            info "Installed: pipelines/$(basename "$pipeline")"
+            local base; base="$(basename "$pipeline")"
+            local rel="prompts/pipelines/$base"
+            local dest="$PROMPTS_DIR/pipelines/$base"
+            if [[ -f "$dest" ]] && ! manifest_contains "$rel"; then
+                warn "Skipped (user file exists): pipelines/$base"
+                continue
+            fi
+            cp "$pipeline" "$dest"
+            MANIFEST_ENTRIES+=("$rel")
+            info "Installed: pipelines/$base"
         done
     fi
 
     # ── Agents ────────────────────────────────────────────────────────────────
+    # SAFETY: Skip any file that already exists and was NOT installed by a previous Kit run.
     step "Installing custom agents..."
     if [[ -d "$INSTALLED_RUNTIME/agents" ]]; then
         for agent in "$INSTALLED_RUNTIME/agents/"*.agent.md; do
             [[ -f "$agent" ]] || continue
-            cp "$agent" "$PROMPTS_DIR/$(basename "$agent")"
-            info "Installed: $(basename "$agent")"
+            local base; base="$(basename "$agent")"
+            local rel="prompts/$base"
+            local dest="$PROMPTS_DIR/$base"
+            if [[ -f "$dest" ]] && ! manifest_contains "$rel"; then
+                warn "Skipped (user file exists): $base"
+                continue
+            fi
+            cp "$agent" "$dest"
+            MANIFEST_ENTRIES+=("$rel")
+            info "Installed: $base"
         done
     fi
 
@@ -270,43 +341,68 @@ EOF
     echo -e "Locations:"
     echo -e "${GRAY}  Kit:       $GLOBAL_KIT_DIR${RESET}"
     echo -e "${GRAY}  Bootstrap: $BOOTSTRAP_FILE${RESET}"
+
+    # Track bootstrap in manifest and write it
+    MANIFEST_ENTRIES+=("Instructions/000-reusable-ai-kit-global.instructions.md")
+    write_manifest
+    step "Manifest written (${#MANIFEST_ENTRIES[@]} Kit-owned files tracked)"
 }
 
 # ── Uninstall ─────────────────────────────────────────────────────────────────
 uninstall_kit() {
     header "Uninstalling REUSABLE_AI_KIT"
 
-    local to_remove=(
-        "$GLOBAL_KIT_DIR"
-        "$BOOTSTRAP_FILE"
-        "$PROMPTS_DIR/setup-ai-kit.prompt.md"
-        "$PROMPTS_DIR/update-ai-kit.prompt.md"
-        "$PROMPTS_DIR/kit-status.prompt.md"
-        "$PROMPTS_DIR/verify-ai-kit.prompt.md"
-    )
-
-    # Also remove any agent files installed from the kit
-    if [[ -d "$GLOBAL_KIT_DIR/agents" ]]; then
-        while IFS= read -r -d '' agent; do
-            to_remove+=("$PROMPTS_DIR/$(basename "$agent")")
-        done < <(find "$GLOBAL_KIT_DIR/agents" -name "*.agent.md" -print0 2>/dev/null)
-    fi
-
-    # Also remove instruction files that were copied to User Instructions
-    if [[ -d "$GLOBAL_KIT_DIR/instructions" ]]; then
-        while IFS= read -r -d '' instr; do
-            to_remove+=("$INSTRUCTIONS_DIR/$(basename "$instr")")
-        done < <(find "$GLOBAL_KIT_DIR/instructions" -name "*.instructions.md" -print0 2>/dev/null)
-    fi
-
-    for path in "${to_remove[@]}"; do
-        if [[ -e "$path" ]]; then
-            rm -rf "$path"
-            step "Removed: $path"
-        else
-            warn "Not found: $path"
+    # Use the manifest to remove only Kit-owned files (safe for user files)
+    read_manifest
+    if [[ ${#PREV_MANIFEST[@]} -gt 0 ]]; then
+        step "Removing ${#PREV_MANIFEST[@]} Kit-owned files (from manifest)..."
+        for rel in "${PREV_MANIFEST[@]}"; do
+            [[ -z "$rel" ]] && continue
+            local full="$VSCODE_USER_DIR/$rel"
+            if [[ -f "$full" ]]; then
+                rm -f "$full"
+                info "Removed: $rel"
+            fi
+        done
+    else
+        warn "No manifest found — falling back to known Kit file names"
+        local fallback=(
+            "$BOOTSTRAP_FILE"
+            "$PROMPTS_DIR/setup-ai-kit.prompt.md"
+            "$PROMPTS_DIR/update-ai-kit.prompt.md"
+            "$PROMPTS_DIR/kit-status.prompt.md"
+            "$PROMPTS_DIR/verify-ai-kit.prompt.md"
+        )
+        # Collect agent/instruction names from Kit dir before deleting
+        if [[ -d "$GLOBAL_KIT_DIR/agents" ]]; then
+            while IFS= read -r -d '' agent; do
+                fallback+=("$PROMPTS_DIR/$(basename "$agent")")
+            done < <(find "$GLOBAL_KIT_DIR/agents" -name "*.agent.md" -print0 2>/dev/null)
         fi
-    done
+        if [[ -d "$GLOBAL_KIT_DIR/instructions" ]]; then
+            while IFS= read -r -d '' instr; do
+                fallback+=("$INSTRUCTIONS_DIR/$(basename "$instr")")
+            done < <(find "$GLOBAL_KIT_DIR/instructions" -name "*.instructions.md" -print0 2>/dev/null)
+        fi
+        for path in "${fallback[@]}"; do
+            if [[ -e "$path" ]]; then
+                rm -rf "$path"
+                step "Removed: $path"
+            fi
+        done
+    fi
+
+    # Remove the Kit directory itself
+    if [[ -d "$GLOBAL_KIT_DIR" ]]; then
+        rm -rf "$GLOBAL_KIT_DIR"
+        step "Removed: $GLOBAL_KIT_DIR"
+    fi
+
+    # Remove empty pipelines dir if we created it
+    if [[ -d "$PROMPTS_DIR/pipelines" ]] && [[ -z "$(ls -A "$PROMPTS_DIR/pipelines" 2>/dev/null)" ]]; then
+        rmdir "$PROMPTS_DIR/pipelines"
+        info "Removed empty: pipelines/"
+    fi
 
     header "Uninstall Complete"
     echo -e "${GREEN}The global AI Kit has been removed.${RESET}"

@@ -75,6 +75,21 @@ function Write-Warning {
     Write-Host "[!] $Text" -ForegroundColor Yellow
 }
 
+# ── Manifest helpers ──────────────────────────────────────────────────────────
+$ManifestPath = "$GlobalKitDir\.kit-manifest"
+
+function Read-Manifest {
+    if (Test-Path $ManifestPath) {
+        return (Get-Content $ManifestPath | Where-Object { $_ -match '\S' })
+    }
+    return @()
+}
+
+function Write-Manifest {
+    param([string[]]$Entries)
+    $Entries | Sort-Object -Unique | Set-Content -Path $ManifestPath -Encoding UTF8
+}
+
 function Install-GlobalKit {
     Write-Header "Installing REUSABLE_AI_KIT Globally"
     
@@ -91,6 +106,19 @@ function Install-GlobalKit {
             Write-Info "Created: $_"
         }
     }
+
+    # Clean up files from a previous Kit install (manifest-tracked only)
+    $PreviousManifest = Read-Manifest
+    if ($PreviousManifest.Count -gt 0) {
+        Write-Step "Cleaning previous Kit files (manifest-tracked)..."
+        foreach ($OldFile in $PreviousManifest) {
+            $OldPath = Join-Path $VSCodeUserDir $OldFile
+            if (Test-Path $OldPath) {
+                Remove-Item -Path $OldPath -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+    $ManifestEntries = [System.Collections.Generic.List[string]]::new()
     
     # Copy the kit to a global location (exclude dev/build artifacts)
     Write-Step "Copying AI Kit to global location..."
@@ -198,13 +226,20 @@ For project-specific memory that persists:
     Set-Content -Path $BootstrapPath -Value $BootstrapContent -Encoding UTF8
     Write-Info "Created: $BootstrapPath"
     
-    # Copy ALL instruction files to VS Code User Instructions folder
+    # Copy Kit instruction files to VS Code User Instructions folder
     # VS Code only auto-loads .instructions.md from this directory — applyTo scoping requires it
+    # SAFETY: Skip any file that already exists and was NOT installed by a previous Kit run
     Write-Step "Installing instruction files..."
     $InstructionFiles = Get-ChildItem -Path "$RuntimeRoot\instructions" -Filter "*.instructions.md" -File -ErrorAction SilentlyContinue
     foreach ($Instr in $InstructionFiles) {
         $InstrDest = Join-Path $InstructionsDir $Instr.Name
+        $RelPath = "Instructions\$($Instr.Name)"
+        if ((Test-Path $InstrDest) -and ($PreviousManifest -notcontains $RelPath)) {
+            Write-Warning "Skipped (user file exists): $($Instr.Name)"
+            continue
+        }
         Copy-Item -Path $Instr.FullName -Destination $InstrDest -Force
+        $ManifestEntries.Add($RelPath)
         Write-Info "Installed: $($Instr.Name)"
     }
     
@@ -212,13 +247,20 @@ For project-specific memory that persists:
     Write-Step "Installing global prompts..."
     
     # Copy ALL prompt files (including pipelines subdirectory)
+    # SAFETY: Skip any file that already exists and was NOT installed by a previous Kit run
     $PromptFiles = Get-ChildItem -Path "$RuntimeRoot\prompts" -Filter "*.prompt.md" -File -ErrorAction SilentlyContinue
     foreach ($Prompt in $PromptFiles) {
         $PromptDest = Join-Path $PromptsDir $Prompt.Name
+        $RelPath = "prompts\$($Prompt.Name)"
+        if ((Test-Path $PromptDest) -and ($PreviousManifest -notcontains $RelPath)) {
+            Write-Warning "Skipped (user file exists): $($Prompt.Name)"
+            continue
+        }
         $PromptContent = Get-Content $Prompt.FullName -Raw
         # Replace placeholder paths with actual install location
         $PromptContent = $PromptContent -replace '\[DETECTED_PATH\]', $GlobalKitDir
         Set-Content -Path $PromptDest -Value $PromptContent -Encoding UTF8
+        $ManifestEntries.Add($RelPath)
         Write-Info "Installed: $($Prompt.Name)"
     }
 
@@ -231,18 +273,32 @@ For project-specific memory that persists:
         }
         $PipelineFiles = Get-ChildItem -Path $PipelinesSource -Filter "*.prompt.md" -File -ErrorAction SilentlyContinue
         foreach ($Pipeline in $PipelineFiles) {
-            Copy-Item -Path $Pipeline.FullName -Destination (Join-Path $PipelinesDest $Pipeline.Name) -Force
+            $PipelineDest = Join-Path $PipelinesDest $Pipeline.Name
+            $RelPath = "prompts\pipelines\$($Pipeline.Name)"
+            if ((Test-Path $PipelineDest) -and ($PreviousManifest -notcontains $RelPath)) {
+                Write-Warning "Skipped (user file exists): pipelines/$($Pipeline.Name)"
+                continue
+            }
+            Copy-Item -Path $Pipeline.FullName -Destination $PipelineDest -Force
+            $ManifestEntries.Add($RelPath)
             Write-Info "Installed: pipelines/$($Pipeline.Name)"
         }
     }
     
     # Install custom agents to prompts folder (VS Code discovers .agent.md files in prompts/)
+    # SAFETY: Skip any file that already exists and was NOT installed by a previous Kit run
     Write-Step "Installing custom agents..."
     $AgentFiles = Get-ChildItem -Path "$RuntimeRoot\agents" -Filter "*.agent.md" -File -ErrorAction SilentlyContinue
     foreach ($Agent in $AgentFiles) {
         $AgentDest = Join-Path $PromptsDir $Agent.Name
+        $RelPath = "prompts\$($Agent.Name)"
+        if ((Test-Path $AgentDest) -and ($PreviousManifest -notcontains $RelPath)) {
+            Write-Warning "Skipped (user file exists): $($Agent.Name)"
+            continue
+        }
         Copy-Item -Path $Agent.FullName -Destination $AgentDest -Force
-        Write-Info "Created: $AgentDest"
+        $ManifestEntries.Add($RelPath)
+        Write-Info "Installed: $($Agent.Name)"
     }
 
     # Setup DuckDB (required by global_memory.py)
@@ -332,7 +388,15 @@ Status: [FULLY OPERATIONAL / NEEDS ATTENTION / NOT INSTALLED]
 "@
     $VerifyPromptPath = "$PromptsDir\verify-ai-kit.prompt.md"
     Set-Content -Path $VerifyPromptPath -Value $VerifyPromptContent -Encoding UTF8
+    $ManifestEntries.Add("prompts\verify-ai-kit.prompt.md")
     Write-Info "Created: $VerifyPromptPath"
+
+    # Also track the bootstrap instruction in the manifest
+    $ManifestEntries.Add("Instructions\000-reusable-ai-kit-global.instructions.md")
+
+    # Write the manifest so future installs/uninstalls know what belongs to the Kit
+    Write-Manifest -Entries $ManifestEntries.ToArray()
+    Write-Step "Manifest written ($($ManifestEntries.Count) Kit-owned files tracked)"
     
     # Success message
     Write-Header "Installation Complete!"
@@ -366,41 +430,55 @@ Status: [FULLY OPERATIONAL / NEEDS ATTENTION / NOT INSTALLED]
 function Uninstall-GlobalKit {
     Write-Header "Uninstalling REUSABLE_AI_KIT"
 
-    $KitAgentPromptPaths = @()
-    $AgentSourceDir = if (Test-Path "$GlobalKitDir\agents") { "$GlobalKitDir\agents" } else { $null }
-    if ($AgentSourceDir) {
-        $KitAgentPromptPaths = Get-ChildItem -Path $AgentSourceDir -Filter "*.agent.md" -File |
-            ForEach-Object { Join-Path $PromptsDir $_.Name }
-    }
-    
-    $ToRemove = @(
-        "$GlobalKitDir",
-        "$InstructionsDir\000-reusable-ai-kit-global.instructions.md",
-        "$PromptsDir\setup-ai-kit.prompt.md",
-        "$PromptsDir\update-ai-kit.prompt.md",
-        "$PromptsDir\kit-status.prompt.md",
-        "$PromptsDir\verify-ai-kit.prompt.md"
-    )
-
-    if ($KitAgentPromptPaths.Count -gt 0) {
-        $ToRemove += $KitAgentPromptPaths
-    }
-
-    # Also remove instruction files that were copied to User Instructions
-    $KitInstructionDir = if (Test-Path "$GlobalKitDir\instructions") { "$GlobalKitDir\instructions" } else { $null }
-    if ($KitInstructionDir) {
-        $KitInstructionPaths = Get-ChildItem -Path $KitInstructionDir -Filter "*.instructions.md" -File |
-            ForEach-Object { Join-Path $InstructionsDir $_.Name }
-        $ToRemove += $KitInstructionPaths
-    }
-    
-    foreach ($Path in $ToRemove) {
-        if (Test-Path $Path) {
-            Remove-Item -Path $Path -Recurse -Force
-            Write-Step "Removed: $Path"
-        } else {
-            Write-Warning "Not found: $Path"
+    # Use the manifest to remove only Kit-owned files (safe for user files)
+    $Manifest = Read-Manifest
+    if ($Manifest.Count -gt 0) {
+        Write-Step "Removing $($Manifest.Count) Kit-owned files (from manifest)..."
+        foreach ($RelPath in $Manifest) {
+            $FullPath = Join-Path $VSCodeUserDir $RelPath
+            if (Test-Path $FullPath) {
+                Remove-Item -Path $FullPath -Force
+                Write-Info "Removed: $RelPath"
+            }
         }
+    } else {
+        Write-Warning "No manifest found — falling back to known Kit file names"
+        # Fallback: remove known Kit files by convention
+        $FallbackPaths = @(
+            "$InstructionsDir\000-reusable-ai-kit-global.instructions.md",
+            "$PromptsDir\setup-ai-kit.prompt.md",
+            "$PromptsDir\update-ai-kit.prompt.md",
+            "$PromptsDir\kit-status.prompt.md",
+            "$PromptsDir\verify-ai-kit.prompt.md"
+        )
+        # Also collect agent/instruction names from the Kit dir (before we delete it)
+        if (Test-Path "$GlobalKitDir\agents") {
+            $FallbackPaths += Get-ChildItem -Path "$GlobalKitDir\agents" -Filter "*.agent.md" -File |
+                ForEach-Object { Join-Path $PromptsDir $_.Name }
+        }
+        if (Test-Path "$GlobalKitDir\instructions") {
+            $FallbackPaths += Get-ChildItem -Path "$GlobalKitDir\instructions" -Filter "*.instructions.md" -File |
+                ForEach-Object { Join-Path $InstructionsDir $_.Name }
+        }
+        foreach ($Path in $FallbackPaths) {
+            if (Test-Path $Path) {
+                Remove-Item -Path $Path -Force
+                Write-Step "Removed: $Path"
+            }
+        }
+    }
+
+    # Remove the Kit directory itself
+    if (Test-Path $GlobalKitDir) {
+        Remove-Item -Path $GlobalKitDir -Recurse -Force
+        Write-Step "Removed: $GlobalKitDir"
+    }
+
+    # Remove empty pipelines dir if we created it
+    $PipelinesDir = "$PromptsDir\pipelines"
+    if ((Test-Path $PipelinesDir) -and ((Get-ChildItem $PipelinesDir -File).Count -eq 0)) {
+        Remove-Item -Path $PipelinesDir -Force
+        Write-Info "Removed empty: pipelines/"
     }
     
     Write-Header "Uninstall Complete"
