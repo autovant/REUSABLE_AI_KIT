@@ -25,6 +25,14 @@
     .\install-global.ps1 -Uninstall
     # Removes global installation
 
+.EXAMPLE
+    .\install-global.ps1 -Edition Both
+    # Installs to both VS Code Stable and Insiders
+
+.EXAMPLE
+    .\install-global.ps1 -Edition Stable
+    # Installs to VS Code Stable only
+
 .NOTES
     Requires: VS Code or VS Code Insiders, GitHub Copilot extension
     Location: User directory at %APPDATA%\Code\User\  (or Code - Insiders)
@@ -32,7 +40,9 @@
 #>
 
 param(
-    [switch]$Uninstall
+    [switch]$Uninstall,
+    [ValidateSet('Auto','Stable','Insiders','Both')]
+    [string]$Edition = 'Auto'
 )
 
 $ErrorActionPreference = "Stop"
@@ -41,14 +51,28 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $KitRoot = Split-Path -Parent $ScriptDir
 
-# Prefer VS Code Insiders if installed, fall back to stable
+# Resolve VS Code edition(s) to install into
 $VSCodeInsidersDir = "$env:APPDATA\Code - Insiders\User"
 $VSCodeStableDir   = "$env:APPDATA\Code\User"
-$VSCodeUserDir = if (Test-Path $VSCodeInsidersDir) { $VSCodeInsidersDir } else { $VSCodeStableDir }
 
-$InstructionsDir = "$VSCodeUserDir\Instructions"
-$PromptsDir      = "$VSCodeUserDir\prompts"
-$GlobalKitDir    = "$VSCodeUserDir\REUSABLE_AI_KIT"
+function Get-TargetEditions {
+    switch ($Edition) {
+        'Insiders' { return @(@{Name='Insiders'; Path=$VSCodeInsidersDir}) }
+        'Stable'   { return @(@{Name='Stable';   Path=$VSCodeStableDir}) }
+        'Both'     { return @(@{Name='Insiders'; Path=$VSCodeInsidersDir}, @{Name='Stable'; Path=$VSCodeStableDir}) }
+        default    {
+            # Auto: prefer Insiders if installed, fall back to Stable
+            if (Test-Path $VSCodeInsidersDir) { return @(@{Name='Insiders'; Path=$VSCodeInsidersDir}) }
+            else { return @(@{Name='Stable'; Path=$VSCodeStableDir}) }
+        }
+    }
+}
+
+# These will be set per-edition in the loop
+$VSCodeUserDir   = $null
+$InstructionsDir = $null
+$PromptsDir      = $null
+$GlobalKitDir    = $null
 
 function Write-Header {
     param([string]$Text)
@@ -76,18 +100,19 @@ function Write-Warning {
 }
 
 # ── Manifest helpers ──────────────────────────────────────────────────────────
-$ManifestPath = "$GlobalKitDir\.kit-manifest"
 
 function Read-Manifest {
-    if (Test-Path $ManifestPath) {
-        return (Get-Content $ManifestPath | Where-Object { $_ -match '\S' })
+    $mp = "$GlobalKitDir\.kit-manifest"
+    if (Test-Path $mp) {
+        return (Get-Content $mp | Where-Object { $_ -match '\S' })
     }
     return @()
 }
 
 function Write-Manifest {
     param([string[]]$Entries)
-    $Entries | Sort-Object -Unique | Set-Content -Path $ManifestPath -Encoding UTF8
+    $mp = "$GlobalKitDir\.kit-manifest"
+    $Entries | Sort-Object -Unique | Set-Content -Path $mp -Encoding UTF8
 }
 
 function Install-GlobalKit {
@@ -488,10 +513,27 @@ function Uninstall-GlobalKit {
 
 # Main
 try {
-    if ($Uninstall) {
-        Uninstall-GlobalKit
-    } else {
-        Install-GlobalKit
+    $Editions = Get-TargetEditions
+    foreach ($Ed in $Editions) {
+        if (-not (Test-Path $Ed.Path)) {
+            Write-Warning "VS Code $($Ed.Name) directory not found at $($Ed.Path) — skipping"
+            continue
+        }
+        # Set per-edition paths
+        $VSCodeUserDir   = $Ed.Path
+        $InstructionsDir = "$VSCodeUserDir\Instructions"
+        $PromptsDir      = "$VSCodeUserDir\prompts"
+        $GlobalKitDir    = "$VSCodeUserDir\REUSABLE_AI_KIT"
+
+        Write-Host ""
+        Write-Host ">>> Targeting VS Code $($Ed.Name): $VSCodeUserDir" -ForegroundColor Magenta
+        Write-Host ""
+
+        if ($Uninstall) {
+            Uninstall-GlobalKit
+        } else {
+            Install-GlobalKit
+        }
     }
 } catch {
     Write-Host "ERROR: $_" -ForegroundColor Red
