@@ -166,25 +166,41 @@ EOF
     fi
     info "Created: $BOOTSTRAP_FILE"
 
+    # ── Instruction files ─────────────────────────────────────────────────────
+    # VS Code only auto-loads .instructions.md from the User Instructions dir.
+    # applyTo scoping requires the files to be there, not buried inside the kit.
+    step "Installing instruction files..."
+    if [[ -d "$INSTALLED_RUNTIME/instructions" ]]; then
+        for instr in "$INSTALLED_RUNTIME/instructions/"*.instructions.md; do
+            [[ -f "$instr" ]] || continue
+            cp "$instr" "$INSTRUCTIONS_DIR/$(basename "$instr")"
+            info "Installed: $(basename "$instr")"
+        done
+    fi
+
     # ── Prompts ───────────────────────────────────────────────────────────────
     step "Installing global prompts..."
 
-    # setup-ai-kit
-    SETUP_SRC="$INSTALLED_RUNTIME/prompts/setup-ai-kit.prompt.md"
-    if [[ -f "$SETUP_SRC" ]]; then
-        sed "s|\[DETECTED_PATH\]|$GLOBAL_KIT_DIR|g" "$SETUP_SRC" \
-            > "$PROMPTS_DIR/setup-ai-kit.prompt.md"
-        info "Created: $PROMPTS_DIR/setup-ai-kit.prompt.md"
+    # Copy ALL prompt files
+    if [[ -d "$INSTALLED_RUNTIME/prompts" ]]; then
+        for prompt in "$INSTALLED_RUNTIME/prompts/"*.prompt.md; do
+            [[ -f "$prompt" ]] || continue
+            # Replace placeholder paths with actual install location
+            sed "s|\[DETECTED_PATH\]|$GLOBAL_KIT_DIR|g" "$prompt" \
+                > "$PROMPTS_DIR/$(basename "$prompt")"
+            info "Installed: $(basename "$prompt")"
+        done
     fi
 
-    # update-ai-kit, kit-status — copy directly
-    for prompt in update-ai-kit kit-status; do
-        SRC="$INSTALLED_RUNTIME/prompts/${prompt}.prompt.md"
-        if [[ -f "$SRC" ]]; then
-            cp "$SRC" "$PROMPTS_DIR/${prompt}.prompt.md"
-            info "Created: $PROMPTS_DIR/${prompt}.prompt.md"
-        fi
-    done
+    # Copy pipeline prompts (subdirectory)
+    if [[ -d "$INSTALLED_RUNTIME/prompts/pipelines" ]]; then
+        mkdir -p "$PROMPTS_DIR/pipelines"
+        for pipeline in "$INSTALLED_RUNTIME/prompts/pipelines/"*.prompt.md; do
+            [[ -f "$pipeline" ]] || continue
+            cp "$pipeline" "$PROMPTS_DIR/pipelines/$(basename "$pipeline")"
+            info "Installed: pipelines/$(basename "$pipeline")"
+        done
+    fi
 
     # ── Agents ────────────────────────────────────────────────────────────────
     step "Installing custom agents..."
@@ -274,6 +290,13 @@ uninstall_kit() {
         while IFS= read -r -d '' agent; do
             to_remove+=("$PROMPTS_DIR/$(basename "$agent")")
         done < <(find "$GLOBAL_KIT_DIR/agents" -name "*.agent.md" -print0 2>/dev/null)
+    fi
+
+    # Also remove instruction files that were copied to User Instructions
+    if [[ -d "$GLOBAL_KIT_DIR/instructions" ]]; then
+        while IFS= read -r -d '' instr; do
+            to_remove+=("$INSTRUCTIONS_DIR/$(basename "$instr")")
+        done < <(find "$GLOBAL_KIT_DIR/instructions" -name "*.instructions.md" -print0 2>/dev/null)
     fi
 
     for path in "${to_remove[@]}"; do

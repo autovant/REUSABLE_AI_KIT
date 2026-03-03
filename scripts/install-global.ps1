@@ -92,15 +92,29 @@ function Install-GlobalKit {
         }
     }
     
-    # Copy the entire kit to a global location
+    # Copy the kit to a global location (exclude dev/build artifacts)
     Write-Step "Copying AI Kit to global location..."
-    $CopyParams = @{
-        Path = "$KitRoot\*"
-        Destination = $GlobalKitDir
-        Recurse = $true
-        Force = $true
+    $ExcludeDirs = @('.git', '.venv', '__pycache__', '_archive', 'node_modules', 'plans')
+    
+    # Clean stale excluded dirs from previous installs
+    foreach ($Excl in $ExcludeDirs) {
+        $ExclPath = Join-Path $GlobalKitDir $Excl
+        if (Test-Path $ExclPath) {
+            Remove-Item -Path $ExclPath -Recurse -Force -ErrorAction SilentlyContinue
+        }
     }
-    Copy-Item @CopyParams
+    
+    # Copy top-level files
+    Get-ChildItem -Path $KitRoot -File | Copy-Item -Destination $GlobalKitDir -Force
+    
+    # Copy directories, excluding dev artifacts
+    Get-ChildItem -Path $KitRoot -Directory |
+        Where-Object { $ExcludeDirs -notcontains $_.Name } |
+        ForEach-Object {
+            $Dest = Join-Path $GlobalKitDir $_.Name
+            if (Test-Path $Dest) { Remove-Item -Path $Dest -Recurse -Force }
+            Copy-Item -Path $_.FullName -Destination $Dest -Recurse -Force
+        }
     Write-Info "Installed to: $GlobalKitDir"
 
     # Runtime root is the kit root itself (no subfolder needed)
@@ -184,82 +198,42 @@ For project-specific memory that persists:
     Set-Content -Path $BootstrapPath -Value $BootstrapContent -Encoding UTF8
     Write-Info "Created: $BootstrapPath"
     
+    # Copy ALL instruction files to VS Code User Instructions folder
+    # VS Code only auto-loads .instructions.md from this directory — applyTo scoping requires it
+    Write-Step "Installing instruction files..."
+    $InstructionFiles = Get-ChildItem -Path "$RuntimeRoot\instructions" -Filter "*.instructions.md" -File -ErrorAction SilentlyContinue
+    foreach ($Instr in $InstructionFiles) {
+        $InstrDest = Join-Path $InstructionsDir $Instr.Name
+        Copy-Item -Path $Instr.FullName -Destination $InstrDest -Force
+        Write-Info "Installed: $($Instr.Name)"
+    }
+    
     # Copy prompts to global prompts folder
     Write-Step "Installing global prompts..."
     
-    # setup-ai-kit prompt
-    $SetupPromptSource = "$RuntimeRoot\prompts\setup-ai-kit.prompt.md"
-    if (Test-Path $SetupPromptSource) {
-        $SetupPromptContent = Get-Content $SetupPromptSource -Raw
-        # Customize paths in the prompt
-        $SetupPromptContent = $SetupPromptContent -replace '\[DETECTED_PATH\]', $GlobalKitDir
-        $SetupPromptPath = "$PromptsDir\setup-ai-kit.prompt.md"
-        Set-Content -Path $SetupPromptPath -Value $SetupPromptContent -Encoding UTF8
-        Write-Info "Created: $SetupPromptPath"
-    } else {
-        Write-Warning "setup-ai-kit.prompt.md not found in kit, creating minimal version..."
-        $SetupPromptContent = @"
----
-agent: agent
-description: 'Integrate REUSABLE_AI_KIT into current project. Creates local configuration and memory.'
-tools: ["read", "edit", "search"]
----
-
-# Setup AI Kit for This Project
-
-Create .copilot/copilot-instructions.md and .copilot/memory/ structure.
-Global kit location: $GlobalKitDir
-"@
-        $SetupPromptPath = "$PromptsDir\setup-ai-kit.prompt.md"
-        Set-Content -Path $SetupPromptPath -Value $SetupPromptContent -Encoding UTF8
+    # Copy ALL prompt files (including pipelines subdirectory)
+    $PromptFiles = Get-ChildItem -Path "$RuntimeRoot\prompts" -Filter "*.prompt.md" -File -ErrorAction SilentlyContinue
+    foreach ($Prompt in $PromptFiles) {
+        $PromptDest = Join-Path $PromptsDir $Prompt.Name
+        $PromptContent = Get-Content $Prompt.FullName -Raw
+        # Replace placeholder paths with actual install location
+        $PromptContent = $PromptContent -replace '\[DETECTED_PATH\]', $GlobalKitDir
+        Set-Content -Path $PromptDest -Value $PromptContent -Encoding UTF8
+        Write-Info "Installed: $($Prompt.Name)"
     }
-    Write-Info "Created: $SetupPromptPath"
-    
-    # update-ai-kit prompt
-    Write-Step "Creating /update-ai-kit prompt..."
-    $UpdatePromptContent = @"
----
-agent: agent
-description: 'Update the globally installed REUSABLE_AI_KIT to the latest version'
-tools: ["read", "search", "execute"]
----
 
-# Update AI Kit
-
-You are updating the globally installed REUSABLE_AI_KIT.
-
-## Steps
-
-1. **Check Current Version**
-   Read: \`$GlobalKitDir\README.md\`
-   Extract the current version number.
-
-2. **Run Update Script**
-   If the kit has a git remote configured, pull latest:
-   \`\`\`powershell
-   cd "$GlobalKitDir"
-   git pull
-   \`\`\`
-   
-   Or re-run the installation script if updating from source:
-   \`\`\`powershell
-   & "$GlobalKitDir\scripts\install-global.ps1"
-   \`\`\`
-
-3. **Report Changes**
-   Show what changed in the update.
-"@
-
-    $UpdatePromptPath = "$PromptsDir\update-ai-kit.prompt.md"
-    Set-Content -Path $UpdatePromptPath -Value $UpdatePromptContent -Encoding UTF8
-    Write-Info "Created: $UpdatePromptPath"
-    
-    # kit-status prompt - copy from kit
-    Write-Step "Creating /kit-status prompt..."
-    $StatusPromptSource = "$RuntimeRoot\prompts\kit-status.prompt.md"
-    if (Test-Path $StatusPromptSource) {
-        Copy-Item -Path $StatusPromptSource -Destination "$PromptsDir\kit-status.prompt.md" -Force
-        Write-Info "Created: $PromptsDir\kit-status.prompt.md"
+    # Copy pipeline prompts (subdirectory)
+    $PipelinesSource = "$RuntimeRoot\prompts\pipelines"
+    if (Test-Path $PipelinesSource) {
+        $PipelinesDest = "$PromptsDir\pipelines"
+        if (-not (Test-Path $PipelinesDest)) {
+            New-Item -ItemType Directory -Path $PipelinesDest -Force | Out-Null
+        }
+        $PipelineFiles = Get-ChildItem -Path $PipelinesSource -Filter "*.prompt.md" -File -ErrorAction SilentlyContinue
+        foreach ($Pipeline in $PipelineFiles) {
+            Copy-Item -Path $Pipeline.FullName -Destination (Join-Path $PipelinesDest $Pipeline.Name) -Force
+            Write-Info "Installed: pipelines/$($Pipeline.Name)"
+        }
     }
     
     # Install custom agents to prompts folder (VS Code discovers .agent.md files in prompts/)
@@ -393,7 +367,7 @@ function Uninstall-GlobalKit {
     Write-Header "Uninstalling REUSABLE_AI_KIT"
 
     $KitAgentPromptPaths = @()
-    $AgentSourceDir = if (Test-Path "$GlobalKitDir\v3\agents") { "$GlobalKitDir\v3\agents" } elseif (Test-Path "$GlobalKitDir\agents") { "$GlobalKitDir\agents" } else { $null }
+    $AgentSourceDir = if (Test-Path "$GlobalKitDir\agents") { "$GlobalKitDir\agents" } else { $null }
     if ($AgentSourceDir) {
         $KitAgentPromptPaths = Get-ChildItem -Path $AgentSourceDir -Filter "*.agent.md" -File |
             ForEach-Object { Join-Path $PromptsDir $_.Name }
@@ -410,6 +384,14 @@ function Uninstall-GlobalKit {
 
     if ($KitAgentPromptPaths.Count -gt 0) {
         $ToRemove += $KitAgentPromptPaths
+    }
+
+    # Also remove instruction files that were copied to User Instructions
+    $KitInstructionDir = if (Test-Path "$GlobalKitDir\instructions") { "$GlobalKitDir\instructions" } else { $null }
+    if ($KitInstructionDir) {
+        $KitInstructionPaths = Get-ChildItem -Path $KitInstructionDir -Filter "*.instructions.md" -File |
+            ForEach-Object { Join-Path $InstructionsDir $_.Name }
+        $ToRemove += $KitInstructionPaths
     }
     
     foreach ($Path in $ToRemove) {
